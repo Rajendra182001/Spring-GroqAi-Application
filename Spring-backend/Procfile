@@ -1,0 +1,1 @@
+web: java -jar target/Groq_Spring-0.0.1-SNAPSHOT.jar
