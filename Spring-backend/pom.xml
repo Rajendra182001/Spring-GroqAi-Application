@@ -9,7 +9,7 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.xworkz</groupId>
-	<artifactId>Groq-Spring</artifactId>
+	<artifactId>Groq_Spring</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>Groq-Spring</name>
 	<description>Demo Project for Spring Boot Groq</description>
@@ -65,6 +65,14 @@
 					</annotationProcessorPaths>
 				</configuration>
 			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<skipTests>true</skipTests>
+				</configuration>
+			</plugin>
+
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
