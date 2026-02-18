@@ -22,6 +22,8 @@ body {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   overflow: hidden;
+  /* Prevent iOS bounce scroll */
+  overscroll-behavior: none;
 }
 
 #root {
@@ -109,4 +111,252 @@ p, h1, h2, h3, h4, h5, h6 {
 img, svg {
   display: block;
   max-width: 100%;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   MOBILE RESPONSIVE — core layout fixes
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Small screens (≤ 640px) ─────────────────────────────────────── */
+@media (max-width: 640px) {
+
+  /* App shell: stack vertically, full height */
+  .app-shell {
+    flex-direction: column;
+    height: 100dvh;
+    /* Use dvh so the layout shrinks when the mobile keyboard opens */
+  }
+
+  /* ── Sidebar: drawer overlay ──────────────────────────────────── */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100dvh;
+    z-index: 200;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                width    0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    width: 280px !important; /* always full-width drawer on mobile */
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 4px 0 40px rgba(0, 0, 0, 0.6);
+  }
+
+  .sidebar-open {
+    transform: translateX(0);
+  }
+
+  .sidebar-closed {
+    transform: translateX(-100%);
+  }
+
+  /* Backdrop dimmer that appears behind the open sidebar */
+  .sidebar-open::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    left: 280px;             /* starts right after the drawer */
+    background: rgba(0, 0, 0, 0.55);
+    z-index: -1;             /* behind sidebar, above chat */
+    backdrop-filter: blur(2px);
+    animation: fadeInBg 0.25s ease both;
+  }
+
+  @keyframes fadeInBg {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  /* ── Chat main: full viewport ─────────────────────────────────── */
+  .chat-main {
+    flex: 1;
+    width: 100%;
+    height: 100dvh;
+    /* Let the keyboard push content up naturally */
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header: tighter on mobile ────────────────────────────────── */
+  .chat-header {
+    height: 56px;
+    padding: 0 12px;
+    /* Keep it above the sidebar backdrop */
+    position: relative;
+    z-index: 10;
+  }
+
+  .header-sub {
+    display: none; /* hide "Groq · Spring Boot" badge on small screens */
+  }
+
+  .header-title {
+    font-size: 0.95rem;
+  }
+
+  /* ── Messages area: take all remaining space ──────────────────── */
+  .messages-area {
+    flex: 1;
+    padding: 16px 12px;
+    gap: 14px;
+    /* Critical: allow scroll without triggering outer body scroll */
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* ── Welcome screen: compact ──────────────────────────────────── */
+  .welcome-screen {
+    padding: 28px 12px 20px;
+    gap: 12px;
+  }
+
+  .welcome-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 18px;
+  }
+
+  .welcome-title {
+    font-size: 1.3rem;
+  }
+
+  .welcome-sub {
+    font-size: 0.82rem;
+  }
+
+  /* Single-column suggestion cards */
+  .suggestions-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    max-width: 100%;
+  }
+
+  .suggestion-card {
+    padding: 12px 14px;
+    font-size: 0.82rem;
+  }
+
+  /* ── Message bubbles: sensible max-width ──────────────────────── */
+  .message-row {
+    max-width: 100%;
+  }
+
+  .message {
+    max-width: calc(100vw - 100px); /* leaves room for avatar + gap */
+    font-size: 0.86rem;
+  }
+
+  /* Override the desktop !important rule for bot bubbles */
+  .bot-message {
+    max-width: calc(100vw - 80px) !important;
+  }
+
+  /* Avatars: slightly smaller */
+  .avatar {
+    width: 30px;
+    height: 30px;
+    font-size: 0.72rem;
+  }
+
+  .bot-avatar .avatar-icon {
+    width: 14px;
+    height: 14px;
+  }
+
+  /* ── Code blocks: horizontally scrollable, don't overflow screen */
+  .code-block-wrapper {
+    max-width: calc(100vw - 56px); /* account for avatar + row gap */
+    overflow: hidden;
+  }
+
+  .code-block {
+    font-size: 0.76rem;
+    padding: 12px 14px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ── Input area: safe bottom inset for iOS home bar ──────────── */
+  .input-area {
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    flex-shrink: 0;
+    position: relative;
+    z-index: 10;
+  }
+
+  .input-container {
+    padding: 8px 10px 8px 14px;
+    border-radius: 14px;
+  }
+
+  .chat-input {
+    font-size: 16px; /* prevents iOS auto-zoom on focus */
+    max-height: 100px;
+  }
+
+  .input-hint {
+    display: none; /* reclaim vertical space on mobile */
+  }
+
+  .send-btn,
+  .attach-btn {
+    width: 38px;
+    height: 38px;
+    touch-action: manipulation; /* removes 300ms tap delay */
+  }
+
+  /* ── Scroll-to-bottom button: position above input ────────────── */
+  .scroll-to-bottom {
+    bottom: 90px; /* above the taller mobile input area */
+  }
+
+  /* ── Orbs: tone down on mobile for perf ──────────────────────── */
+  .orb {
+    opacity: 0.1;
+    filter: blur(70px);
+  }
+
+  .orb-1 { width: 300px; height: 300px; }
+  .orb-2 { width: 250px; height: 250px; }
+  .orb-3 { width: 180px; height: 180px; }
+}
+
+/* ── Medium / tablet (641px – 1024px) ───────────────────────────── */
+@media (min-width: 641px) and (max-width: 1024px) {
+
+  .sidebar-open  { width: 220px; }
+  .sidebar-closed { width: 60px; }
+
+  .message {
+    max-width: 400px;
+  }
+
+  .bot-message {
+    max-width: 540px !important;
+  }
+
+  .suggestions-grid {
+    grid-template-columns: repeat(2, 1fr);
+    max-width: 460px;
+  }
+
+  .chat-input {
+    font-size: 16px; /* prevents tablet zoom too */
+  }
+}
+
+/* ─── iOS-specific: handle viewport height with virtual keyboard ── */
+/* When the keyboard opens, dvh shrinks automatically on modern iOS,
+   but this ensures the layout doesn't shift awkwardly.              */
+@supports (-webkit-touch-callout: none) {
+  .chat-main {
+    /* Use fill-available as a fallback for older iOS Safari */
+    height: -webkit-fill-available;
+  }
+
+  .messages-area {
+    /* Prevent bounce scroll from interfering with message scroll */
+    -webkit-overflow-scrolling: touch;
+  }
 }
