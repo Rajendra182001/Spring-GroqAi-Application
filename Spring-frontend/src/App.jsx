@@ -1,10 +1,7 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import axios from "axios";
 import "./App.css";
 
-// ─────────────────────────────────────────────────────────────────
-// Axios instance  →  GET http://localhost:8080/chat?q=<question>
-// ─────────────────────────────────────────────────────────────────
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
 });
@@ -28,12 +25,7 @@ const suggestions = [
   "How does Spring Boot work?",
 ];
 
-// ─────────────────────────────────────────────────────────────────
-// Message Formatter
-// Handles: ```lang\ncode``` blocks, `inline code`, **bold**, \n
-// ─────────────────────────────────────────────────────────────────
-
-// Render inline styles: `code` and **bold** and plain text
+// ─── Message Formatter ───────────────────────────────────────────
 const renderInline = (text) =>
   text.split("\n").map((line, lineIdx, arr) => {
     const parts = line.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
@@ -52,7 +44,6 @@ const renderInline = (text) =>
     );
   });
 
-// Full formatter: splits on fenced code blocks first, then inline
 const formatMessage = (text) => {
   const elements = [];
   const codeBlockRegex = /```(\w*)\n?([\s\S]*?)```/g;
@@ -60,7 +51,6 @@ const formatMessage = (text) => {
   let match;
 
   while ((match = codeBlockRegex.exec(text)) !== null) {
-    // Text segment before this code block
     if (match.index > lastIndex) {
       const segment = text.slice(lastIndex, match.index);
       elements.push(
@@ -69,8 +59,6 @@ const formatMessage = (text) => {
         </div>
       );
     }
-
-    // Code block
     const lang = match[1] || "code";
     const code = match[2].trimEnd();
     elements.push(
@@ -91,11 +79,9 @@ const formatMessage = (text) => {
         <pre className="code-block"><code>{code}</code></pre>
       </div>
     );
-
     lastIndex = match.index + match[0].length;
   }
 
-  // Remaining text after last code block
   if (lastIndex < text.length) {
     elements.push(
       <div key={`text-${lastIndex}`} className="text-segment">
@@ -107,9 +93,7 @@ const formatMessage = (text) => {
   return elements.length > 0 ? elements : <div className="text-segment">{renderInline(text)}</div>;
 };
 
-// ─────────────────────────────────────────────────────────────────
-// TypingIndicator
-// ─────────────────────────────────────────────────────────────────
+// ─── TypingIndicator ─────────────────────────────────────────────
 const TypingIndicator = () => (
   <div className="message-row bot-row">
     <div className="avatar bot-avatar">
@@ -126,9 +110,7 @@ const TypingIndicator = () => (
   </div>
 );
 
-// ─────────────────────────────────────────────────────────────────
-// Message Bubble
-// ─────────────────────────────────────────────────────────────────
+// ─── Message Bubble ──────────────────────────────────────────────
 const Message = ({ msg, isNew }) => (
   <div
     className={`message-row ${msg.sender === "user" ? "user-row" : "bot-row"} ${
@@ -150,7 +132,6 @@ const Message = ({ msg, isNew }) => (
         )}
       </div>
     )}
-
     <div
       className={`message ${msg.sender === "user" ? "user-message" : "bot-message"} ${
         msg.isError ? "error-message" : ""
@@ -161,7 +142,6 @@ const Message = ({ msg, isNew }) => (
       </div>
       <span className="timestamp">{msg.time}</span>
     </div>
-
     {msg.sender === "user" && (
       <div className="avatar user-avatar">
         <span>U</span>
@@ -170,32 +150,108 @@ const Message = ({ msg, isNew }) => (
   </div>
 );
 
-// ─────────────────────────────────────────────────────────────────
-// App
-// ─────────────────────────────────────────────────────────────────
+// ─── App ─────────────────────────────────────────────────────────
 export default function App() {
-  const [messages, setMessages]         = useState([INITIAL_MESSAGE]);
-  const [input, setInput]               = useState("");
-  const [pendingQuery, setPendingQuery] = useState(null);
-  const [isLoading, setIsLoading]       = useState(false);
-  const [newMsgId, setNewMsgId]         = useState(null);
-  const [sidebarOpen, setSidebarOpen]   = useState(true);
-  const [showScrollBtn, setShowScrollBtn] = useState(false); // ← "scroll to bottom" button
+  const [messages, setMessages]           = useState([INITIAL_MESSAGE]);
+  const [input, setInput]                 = useState("");
+  const [pendingQuery, setPendingQuery]   = useState(null);
+  const [isLoading, setIsLoading]         = useState(false);
+  const [newMsgId, setNewMsgId]           = useState(null);
+  const [sidebarOpen, setSidebarOpen]     = useState(false); // default CLOSED on mobile
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
 
   const messagesEndRef  = useRef(null);
-  const messagesAreaRef = useRef(null); // ← ref on the scrollable container
+  const messagesAreaRef = useRef(null);
   const inputRef        = useRef(null);
+  const sidebarRef      = useRef(null);
 
-  // Helper — returns true when user is within 120px of the bottom
+  // ── Touch swipe state ────────────────────────────────────────
+  const touchStartX   = useRef(null);
+  const touchStartY   = useRef(null);
+  const isSwiping     = useRef(false);
+
+  // Open sidebar when swiping right from left edge (≤ 40px)
+  // Close sidebar when swiping left while open
+  const handleTouchStart = useCallback((e) => {
+    const touch = e.touches[0];
+    touchStartX.current = touch.clientX;
+    touchStartY.current = touch.clientY;
+    isSwiping.current   = false;
+  }, []);
+
+  const handleTouchMove = useCallback((e) => {
+    if (touchStartX.current === null) return;
+
+    const dx = e.touches[0].clientX - touchStartX.current;
+    const dy = e.touches[0].clientY - touchStartY.current;
+
+    // Ignore mostly-vertical scrolls
+    if (!isSwiping.current && Math.abs(dy) > Math.abs(dx)) return;
+
+    isSwiping.current = true;
+
+    // Swipe RIGHT from left edge → open sidebar
+    if (!sidebarOpen && touchStartX.current < 40 && dx > 0) {
+      e.preventDefault(); // prevent page scroll while opening
+    }
+
+    // Swipe LEFT while sidebar open → give visual feedback (optional)
+    if (sidebarOpen && dx < 0) {
+      e.preventDefault();
+    }
+  }, [sidebarOpen]);
+
+  const handleTouchEnd = useCallback((e) => {
+    if (touchStartX.current === null) return;
+
+    const touch = e.changedTouches[0];
+    const dx = touch.clientX - touchStartX.current;
+    const dy = touch.clientY - touchStartY.current;
+
+    // Only act on horizontal swipes (dx dominant)
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
+      if (!sidebarOpen && touchStartX.current < 40 && dx > 0) {
+        // Swipe right from edge → open
+        setSidebarOpen(true);
+      } else if (sidebarOpen && dx < -60) {
+        // Swipe left while open → close
+        setSidebarOpen(false);
+      }
+    }
+
+    touchStartX.current = null;
+    touchStartY.current = null;
+    isSwiping.current   = false;
+  }, [sidebarOpen]);
+
+  // Attach touch listeners to the whole document
+  useEffect(() => {
+    document.addEventListener("touchstart", handleTouchStart, { passive: true });
+    document.addEventListener("touchmove",  handleTouchMove,  { passive: false });
+    document.addEventListener("touchend",   handleTouchEnd,   { passive: true });
+    return () => {
+      document.removeEventListener("touchstart", handleTouchStart);
+      document.removeEventListener("touchmove",  handleTouchMove);
+      document.removeEventListener("touchend",   handleTouchEnd);
+    };
+  }, [handleTouchStart, handleTouchMove, handleTouchEnd]);
+
+  // Default sidebar open on desktop, closed on mobile
+  useEffect(() => {
+    const mql = window.matchMedia("(min-width: 641px)");
+    setSidebarOpen(mql.matches);
+    const onChange = (e) => setSidebarOpen(e.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+
+  // ── Scroll helpers ───────────────────────────────────────────
   const isNearBottom = () => {
     const el = messagesAreaRef.current;
     if (!el) return true;
     return el.scrollHeight - el.scrollTop - el.clientHeight < 120;
   };
 
-  // useEffect 1 — smart auto-scroll:
-  //   • Always scroll on the USER's own message (new outgoing msg)
-  //   • Only scroll on bot reply if user is already near the bottom
   useEffect(() => {
     const lastMsg = messages[messages.length - 1];
     if (!lastMsg) return;
@@ -203,43 +259,31 @@ export default function App() {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
       setShowScrollBtn(false);
     } else {
-      // User has scrolled up — show the "new message" button instead
       setShowScrollBtn(true);
     }
   }, [messages, isLoading]);
 
-  // useEffect 2 — track scroll position to show/hide the scroll button
   useEffect(() => {
     const el = messagesAreaRef.current;
     if (!el) return;
-    const handleScroll = () => {
-      setShowScrollBtn(!isNearBottom());
-    };
+    const handleScroll = () => setShowScrollBtn(!isNearBottom());
     el.addEventListener("scroll", handleScroll, { passive: true });
     return () => el.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // useEffect 3 — focus input on mount
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
-  // useEffect 3 — axios API call, fires when pendingQuery is set
+  // ── API call ─────────────────────────────────────────────────
   useEffect(() => {
     if (!pendingQuery) return;
-
     setIsLoading(true);
 
-    // GET http://localhost:8080/chat?q=<pendingQuery>
     api
       .get("/chat", { params: { q: pendingQuery } })
       .then((res) => {
-        const botMsg = {
-          id: Date.now(),
-          sender: "bot",
-          text: res.data,         // Spring Boot returns plain String
-          time: getTime(),
-        };
+        const botMsg = { id: Date.now(), sender: "bot", text: res.data, time: getTime() };
         setMessages((prev) => [...prev, botMsg]);
         setNewMsgId(botMsg.id);
       })
@@ -249,11 +293,9 @@ export default function App() {
           err.message ||
           "Could not reach the server. Is Spring Boot running on port 8080?";
         const errMsg = {
-          id: Date.now(),
-          sender: "bot",
+          id: Date.now(), sender: "bot",
           text: "⚠️ " + errText,
-          time: getTime(),
-          isError: true,
+          time: getTime(), isError: true,
         };
         setMessages((prev) => [...prev, errMsg]);
         setNewMsgId(errMsg.id);
@@ -265,21 +307,19 @@ export default function App() {
       });
   }, [pendingQuery]);
 
-  // sendMessage — appends user bubble, sets pendingQuery → triggers useEffect 3
+  // ── Send message ─────────────────────────────────────────────
   const sendMessage = (text) => {
     const userText = (text || input).trim();
     if (!userText || isLoading) return;
-
-    const userMsg = {
-      id: Date.now(),
-      sender: "user",
-      text: userText,
-      time: getTime(),
-    };
+    const userMsg = { id: Date.now(), sender: "user", text: userText, time: getTime() };
     setMessages((prev) => [...prev, userMsg]);
     setNewMsgId(userMsg.id);
     setInput("");
     setPendingQuery(userText);
+    // Close sidebar on mobile when sending
+    if (window.matchMedia("(max-width: 640px)").matches) {
+      setSidebarOpen(false);
+    }
   };
 
   const handleKey = (e) => {
@@ -293,8 +333,11 @@ export default function App() {
     setMessages([{ ...INITIAL_MESSAGE, id: Date.now(), time: getTime() }]);
     setPendingQuery(null);
     setIsLoading(false);
+    setSidebarOpen(false); // close sidebar on mobile after clearing
     inputRef.current?.focus();
   };
+
+  const isMobile = () => window.matchMedia("(max-width: 640px)").matches;
 
   return (
     <div className="app-shell">
@@ -305,8 +348,20 @@ export default function App() {
         <div className="orb orb-3" />
       </div>
 
-      {/* ── Sidebar ───────────────────────────────────────────── */}
-      <aside className={`sidebar ${sidebarOpen ? "sidebar-open" : "sidebar-closed"}`}>
+      {/* ── Backdrop overlay (mobile only) — tap to close sidebar ── */}
+      {sidebarOpen && (
+        <div
+          className="sidebar-backdrop"
+          onClick={() => setSidebarOpen(false)}
+          aria-label="Close sidebar"
+        />
+      )}
+
+      {/* ── Sidebar ─────────────────────────────────────────────── */}
+      <aside
+        ref={sidebarRef}
+        className={`sidebar ${sidebarOpen ? "sidebar-open" : "sidebar-closed"}`}
+      >
         <div className="sidebar-header">
           <div className="brand">
             <div className="brand-icon">
@@ -357,11 +412,14 @@ export default function App() {
         </div>
       </aside>
 
-      {/* ── Main Chat ─────────────────────────────────────────── */}
+      {/* ── Main Chat ───────────────────────────────────────────── */}
       <main className="chat-main">
-
         <header className="chat-header">
-          <button className="toggle-sidebar" onClick={() => setSidebarOpen((o) => !o)}>
+          <button
+            className="toggle-sidebar"
+            onClick={() => setSidebarOpen((o) => !o)}
+            aria-label="Toggle sidebar"
+          >
             <svg viewBox="0 0 24 24" fill="none" width="20" height="20">
               <path d="M3 12h18M3 6h18M3 18h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
@@ -417,7 +475,6 @@ export default function App() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Scroll-to-bottom button — shown when user scrolls up */}
         {showScrollBtn && (
           <button
             className="scroll-to-bottom"
@@ -473,7 +530,6 @@ export default function App() {
           </div>
           <p className="input-hint">Enter to send · Shift+Enter for new line</p>
         </div>
-
       </main>
     </div>
   );
