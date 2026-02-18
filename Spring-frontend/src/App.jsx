@@ -6,7 +6,7 @@ import "./App.css";
 // Axios instance  →  GET http://localhost:8080/chat?q=<question>
 // ─────────────────────────────────────────────────────────────────
 const api = axios.create({
-  baseURL: "http://localhost:8080",
+  baseURL: import.meta.env.VITE_API_URL,
 });
 
 const BOT_NAME = "Aria";
